@@ -50,7 +50,10 @@ func formSchemaAt(root map[string]any, path string) map[string]any {
 			if key != "*" && (err != nil || i < 0 || strconv.Itoa(i) != key) {
 				return nil
 			}
-			current = node["items"]
+			if key == "*" {
+				i = -1
+			}
+			current = p.ArrayItemSchema(node, i)
 		} else {
 			props, _ := node["properties"].(map[string]any)
 			current = props[key]

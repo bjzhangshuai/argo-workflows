@@ -156,10 +156,7 @@ func resultSchema(r api.ActionResultDefinition) (*gojsonschema.Schema, error) {
 	if len(r.Schema.Raw) > 32768 || json.Unmarshal(r.Schema.Raw, &value) != nil || len(p.CheckSchema(value, "")) != 0 {
 		return nil, fmt.Errorf("result requires a supported schema")
 	}
-	loader := gojsonschema.NewSchemaLoader()
-	loader.AutoDetect = false
-	loader.Draft = gojsonschema.Draft7
-	compiled, err := loader.Compile(gojsonschema.NewGoLoader(value))
+	compiled, err := p.CompileSchema(value)
 	if err != nil {
 		return nil, fmt.Errorf("invalid result schema")
 	}

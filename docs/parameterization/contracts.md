@@ -518,3 +518,21 @@ ParameterRetry records the resulting native Workflow spec digest, so later origi
 The namespace-scoped validating webhook also enforces immutable snapshot specs and published definition contracts on updates.
 This complements CEL admission policies on newer Kubernetes releases and supports clusters without those policies.
 No replacement scheduler or business query implementation is introduced.
+
+## Imported schema vocabulary
+
+The draft-07 engine also accepts a bounded import vocabulary: `ipv4` and
+`ipv4-cidr` formats, positional `prefixItems`, the boolean `deprecated`
+annotation, and `x-kubernetes-int-or-string`. It lowers these constraints on a
+private copy before validation; the published schema, revision digest, defaults,
+field paths and values are not rewritten. IP constraints are intersected with
+existing patterns. Prefix items become draft-07 tuples, with `items` governing
+only their tail; mixing prefix items with legacy tuple keywords is rejected.
+Unsupported formats, dialects and remote references remain errors. This does
+not provide general JSON Schema 2020-12 support.
+
+Large finite numeric bounds in definitions are permitted. Editable input values
+and literal defaults retain the existing interoperable JSON number limit.
+Model validation, native action inputs/outputs and result observations use the
+same import semantics. Positional form fields resolve their own item schema;
+a wildcard cannot select an arbitrary position of a heterogeneous tuple.

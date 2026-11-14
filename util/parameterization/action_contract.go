@@ -33,10 +33,14 @@ func FreezeActionContract(schema map[string]any) (string, error) {
 			return "", fmt.Errorf("action parameter %s needs a concrete encoding type", name)
 		}
 	}
+	normalized, normalizeErr := importedSchema(schema, 0)
+	if normalizeErr != nil {
+		return "", normalizeErr
+	}
 	loader := gojsonschema.NewSchemaLoader()
 	loader.AutoDetect = false
 	loader.Draft = gojsonschema.Draft7
-	if _, err := loader.Compile(gojsonschema.NewGoLoader(schema)); err != nil {
+	if _, err := loader.Compile(gojsonschema.NewGoLoader(normalized)); err != nil {
 		return "", fmt.Errorf("invalid action schema")
 	}
 	raw, err := json.Marshal(schema)
@@ -118,10 +122,14 @@ func ValidateActionValues(encoded string, params []wfv1.Parameter, result *strin
 			}
 		}
 	}
+	normalized, normalizeErr := importedSchema(schema, 0)
+	if normalizeErr != nil {
+		return normalizeErr
+	}
 	loader := gojsonschema.NewSchemaLoader()
 	loader.AutoDetect = false
 	loader.Draft = gojsonschema.Draft7
-	compiled, err := loader.Compile(gojsonschema.NewGoLoader(schema))
+	compiled, err := loader.Compile(gojsonschema.NewGoLoader(normalized))
 	if err != nil {
 		return fmt.Errorf("invalid action contract")
 	}

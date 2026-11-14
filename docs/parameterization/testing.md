@@ -42,3 +42,21 @@ All script names below are relative to `test/parameterization/`.
 The result observer, external-operation controller and Vault fixtures are examples with separate setup requirements documented beside their manifests.
 They do not use production providers or account credentials.
 A passing local run does not establish upstream CI status or community API approval.
+
+For import compatibility, `imported_schema_e2e.py` checks unchanged source
+schemas, positional/IP/CIDR rejection, frozen parameter revisions and actual
+native task outputs. Run it in the same isolated installation as the suites
+above. External inventories can be replayed offline without submitting any
+Workflow:
+
+```sh
+ARGO_NATIVE_TEMPLATE_INVENTORY=/private/current-workflowtemplates.json \
+  go test ./workflow/validate -run TestExternalNativeTemplateInventory -count=1
+ARGO_PARAMETERIZATION_CONTRACT_FIXTURE=/private/current-model-form-contracts.json \
+  go test ./server/parameterization -run TestExternalFormContractInventory -count=1
+```
+
+Keep business definitions and credentials outside the repository. The first
+fixture is a WorkflowTemplateList; the second is an array of `model` and `form`
+contracts. Native inventory replay uses fake read-only clients and strict JSON
+decoding so newer native fields cannot be silently discarded.

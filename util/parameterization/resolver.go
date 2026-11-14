@@ -19,6 +19,17 @@ func init() {
 
 // CheckSchema refuses unsupported validation rather than silently weakening a contract.
 func CheckSchema(schema any, path string) []FieldError {
+	if err := schemaComplexity(schema); err != nil {
+		return []FieldError{{Code: "InvalidSchema", Path: path, Message: err.Error()}}
+	}
+	normalized, err := importedSchema(schema, 0)
+	if err != nil {
+		return []FieldError{{Code: "InvalidSchema", Path: path, Message: err.Error()}}
+	}
+	return checkDraft7Schema(normalized, path)
+}
+
+func checkDraft7Schema(schema any, path string) []FieldError {
 	if _, ok := schema.(bool); ok {
 		return nil
 	}
@@ -43,15 +54,21 @@ func CheckSchema(schema any, path string) []FieldError {
 		case "properties", "definitions":
 			if m, ok := v.(map[string]any); ok {
 				for name, child := range m {
-					errors = append(errors, CheckSchema(child, p+"/"+Escape(name))...)
+					errors = append(errors, checkDraft7Schema(child, p+"/"+Escape(name))...)
 				}
 			}
 		case "items", "additionalProperties", "additionalItems", "not", "if", "then", "else":
-			errors = append(errors, CheckSchema(v, p)...)
+			if list, ok := v.([]any); ok && k == "items" {
+				for i, child := range list {
+					errors = append(errors, checkDraft7Schema(child, fmt.Sprintf("%s/%d", p, i))...)
+				}
+			} else {
+				errors = append(errors, checkDraft7Schema(v, p)...)
+			}
 		case "oneOf", "anyOf", "allOf":
 			if list, ok := v.([]any); ok {
 				for i, child := range list {
-					errors = append(errors, CheckSchema(child, fmt.Sprintf("%s/%d", p, i))...)
+					errors = append(errors, checkDraft7Schema(child, fmt.Sprintf("%s/%d", p, i))...)
 				}
 			}
 		}
@@ -81,8 +98,8 @@ func Defaults(schema map[string]any, value any, path string, sources map[string]
 			}
 		}
 	case []any:
-		if child, ok := schema["items"].(map[string]any); ok {
-			for i, item := range v {
+		for i, item := range v {
+			if child := ArrayItemSchema(schema, i); child != nil {
 				v[i] = Defaults(child, item, fmt.Sprintf("%s/%d", path, i), sources)
 			}
 		}
@@ -97,8 +114,26 @@ func ValidateModelSchema(model Model) []FieldError {
 	return errors
 }
 
+// CompileSchema shares the exact import and validation semantics with action
+// contracts and result observations; no consumer may ignore imported constraints.
+func CompileSchema(schema map[string]any) (*gojsonschema.Schema, error) {
+	compiled, errors := compileModelSchema(Model{Dialect: Dialect, Schema: schema})
+	if len(errors) > 0 {
+		return nil, fmt.Errorf("unsupported schema: %s at %s", errors[0].Code, errors[0].Path)
+	}
+	return compiled, nil
+}
+
 func compileModelSchema(model Model) (*gojsonschema.Schema, []FieldError) {
-	if err := checkComplexity(model.Schema, 0, new(int)); err != nil {
+	if err := schemaComplexity(model.Schema); err != nil {
+		return nil, []FieldError{{Code: "InvalidSchema", Path: "/schema", Message: err.Error()}}
+	}
+	normalized, importErr := importedSchema(model.Schema, 0)
+	if importErr != nil {
+		return nil, []FieldError{{Code: "InvalidSchema", Path: "/schema", Message: importErr.Error()}}
+	}
+	model.Schema = normalized.(map[string]any)
+	if err := schemaComplexity(model.Schema); err != nil {
 		return nil, []FieldError{{Code: "InvalidSchema", Path: "/schema", Message: err.Error()}}
 	}
 	if model.Dialect != Dialect {
@@ -138,7 +173,9 @@ func Resolve(model Model, input any) (any, map[string]string, []FieldError) {
 	if len(schemaErrors) > 0 {
 		return value, sources, schemaErrors
 	}
-	expanded, _ := expandSchema(model.Schema, model.Schema, map[string]bool{}, 0, new(int))
+	normalized, _ := importedSchema(model.Schema, 0)
+	normalizedSchema := normalized.(map[string]any)
+	expanded, _ := expandSchema(normalizedSchema, normalizedSchema, map[string]bool{}, 0, new(int))
 	schema := expanded.(map[string]any)
 	markSources(value, "", sources)
 	value = Defaults(schema, value, "", sources)
@@ -234,6 +271,17 @@ func expandSchema(raw any, root map[string]any, stack map[string]bool, depth int
 	}
 	if depth > 64 {
 		return nil, fmt.Errorf("schema expansion exceeds 64 levels")
+	}
+	if list, ok := raw.([]any); ok {
+		next := make([]any, len(list))
+		for i, child := range list {
+			v, err := expandSchema(child, root, stack, depth+1, nodes)
+			if err != nil {
+				return nil, err
+			}
+			next[i] = v
+		}
+		return next, nil
 	}
 	s, ok := raw.(map[string]any)
 	if !ok {
